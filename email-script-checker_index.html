@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>メールアドレス文字種チェッカー</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f7f9;--surface:#fff;--text:#1b2230;--muted:#5d6678;--line:#d9dde5;
+--lat:#1d6fd8;--lat-bg:#e3eefc;--cyr:#c4281c;--cyr-bg:#fde6e3;--gre:#9a5b00;--gre-bg:#fff0d1;
+--ok:#1c7a43;--ok-bg:#e1f4e8;--warn:#b3261e;--warn-bg:#fdecea}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#12161d;--surface:#1b212b;--text:#e8ebf1;--muted:#98a1b3;--line:#2e3644;
+--lat:#6aa8ff;--lat-bg:#16293f;--cyr:#ff8a7d;--cyr-bg:#3d1b18;--gre:#ffc266;--gre-bg:#3a2a0c;
+--ok:#6fd49b;--ok-bg:#12301f;--warn:#ff8a7d;--warn-bg:#3d1b18}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",system-ui,sans-serif;line-height:1.7}
+main{max-width:720px;margin:0 auto;padding:32px 20px 48px}
+h1{font-size:1.4rem;margin:0 0 4px}
+p.lead{margin:0 0 20px;color:var(--muted);font-size:.92rem}
+input{width:100%;font:inherit;font-size:1.1rem;padding:14px 16px;border:2px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)}
+input:focus-visible{outline:3px solid var(--lat);outline-offset:1px}
+#banner{margin-top:16px;padding:14px 16px;border-radius:8px;font-weight:600;border-left:6px solid var(--line);background:var(--surface)}
+#banner.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+#banner.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+#banner.note{background:var(--gre-bg);border-color:var(--gre);color:var(--gre)}
+#banner small{display:block;font-weight:400;color:var(--text);margin-top:2px}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px;font-size:.85rem}
+.chip{padding:2px 10px;border-radius:99px;font-weight:600}
+.lat{color:var(--lat);background:var(--lat-bg)}.cyr{color:var(--cyr);background:var(--cyr-bg)}.gre{color:var(--gre);background:var(--gre-bg)}
+.oth{color:var(--muted);background:var(--line)}
+#view{font-size:1.5rem;word-break:break-all;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:8px;min-height:3.2rem;font-family:ui-monospace,Menlo,Consolas,monospace}
+#view span{border-radius:3px;padding:0 1px}
+#view .at,#view .dot{color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin-top:20px;font-size:.88rem;display:block;overflow-x:auto}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600}
+.samples{margin-top:24px;font-size:.88rem;color:var(--muted)}
+.samples button{font:inherit;cursor:pointer;margin:4px 6px 0 0;padding:4px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
+.samples button:focus-visible{outline:3px solid var(--lat)}
+</style>
+</head>
+<body>
+<main>
+<h1>メールアドレス文字種チェッカー</h1>
+<p class="lead">ラテン文字・キリル文字・ギリシャ文字が混在していないかを調べます。見た目が同じ別の文字(例: a と а)でなりすます手口の発見に使えます。</p>
+<label for="email" style="display:none">メールアドレス</label>
+<input id="email" type="text" inputmode="email" autocomplete="off" spellcheck="false" placeholder="メールアドレスを入力または貼り付け">
+<div id="banner" role="status" aria-live="polite">メールアドレスを入力してください。</div>
+<div class="legend">
+<span class="chip lat">ラテン文字</span><span class="chip cyr">キリル文字</span><span class="chip gre">ギリシャ文字</span><span class="chip oth">その他</span>
+</div>
+<div id="view" aria-label="文字種ごとの色分け表示"></div>
+<table id="detail" hidden><thead><tr><th>文字</th><th>文字種</th><th>コードポイント</th><th>名称の目安</th></tr></thead><tbody></tbody></table>
+<div class="samples">試してみる:
+<button data-v="user@example.com">通常</button>
+<button data-v="paypаl@example.com">キリル a 混入</button>
+<button data-v="admin@gοogle.com">ギリシャ o 混入</button>
+<button data-v="support@арр1е.com">全部キリル</button>
+</div>
+</main>
+<script>
+const NAMES={Latin:'ラテン文字',Cyrillic:'キリル文字',Greek:'ギリシャ文字'};
+const CLS={Latin:'lat',Cyrillic:'cyr',Greek:'gre'};
+const RE={Latin:/\p{Script=Latin}/u,Cyrillic:/\p{Script=Cyrillic}/u,Greek:/\p{Script=Greek}/u};
+const input=document.getElementById('email'),banner=document.getElementById('banner'),view=document.getElementById('view'),
+table=document.getElementById('detail'),tbody=table.querySelector('tbody');
+
+function scriptOf(ch){for(const k in RE)if(RE[k].test(ch))return k;return null}
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+function analyze(v){
+  const chars=[...v];
+  // 「@」と「.」で区切った各パーツ内の混在を調べる
+  const parts=[];let cur=[];
+  chars.forEach(c=>{if(c==='@'||c==='.'){parts.push(cur);cur=[]}else cur.push(c)});
+  parts.push(cur);
+  const all=new Set(),mixedParts=[];
+  parts.forEach(p=>{
+    const s=new Set(p.map(scriptOf).filter(Boolean));
+    s.forEach(x=>all.add(x));
+    if(s.size>1)mixedParts.push({text:p.join(''),scripts:[...s]});
+  });
+  return{chars,all,mixedParts};
+}
+
+function render(){
+  const v=input.value.trim();
+  view.innerHTML='';tbody.innerHTML='';
+  if(!v){banner.className='';banner.textContent='メールアドレスを入力してください。';table.hidden=true;return}
+  const{chars,all,mixedParts}=analyze(v);
+  let html='';const rows=[];
+  chars.forEach(c=>{
+    const s=scriptOf(c);
+    const cp='U+'+c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0');
+    if(s){html+=`<span class="${CLS[s]}" title="${NAMES[s]} ${cp}">${esc(c)}</span>`;
+      if(s!=='Latin'||all.size>1)rows.push([c,s,cp])}
+    else if(c==='@')html+='<span class="at">@</span>';
+    else if(c==='.')html+='<span class="dot">.</span>';
+    else{html+=`<span class="oth" title="${cp}">${esc(c)}</span>`;
+      if(c.codePointAt(0)>127)rows.push([c,null,cp])}
+  });
+  view.innerHTML=html;
+
+  const names=[...all].map(k=>NAMES[k]).join('・');
+  if(mixedParts.length){
+    banner.className='warn';
+    banner.innerHTML='⚠ 警告: 同じ語の中に複数の文字種が混在しています'+
+      `<small>${mixedParts.map(m=>`「${esc(m.text)}」(${m.scripts.map(k=>NAMES[k]).join('+')})`).join('、')}。見た目が似た別の文字で偽装されている可能性があります。</small>`;
+  }else if(all.size>1){
+    banner.className='warn';
+    banner.innerHTML=`⚠ 警告: アドレス内に ${names} が含まれています`+
+      '<small>パーツごとには単一の文字種ですが、全体では混在しています。送信元を確認してください。</small>';
+  }else if(all.has('Cyrillic')||all.has('Greek')){
+    banner.className='note';
+    banner.innerHTML=`注意: ${names}のみで書かれています`+
+      '<small>ラテン文字に見える別の文字を使った偽装の可能性があります。心当たりがなければ注意してください。</small>';
+  }else if(chars.some(c=>c.codePointAt(0)>127)){
+    banner.className='note';banner.innerHTML='注意: ASCII以外の文字が含まれています<small>ラテン・キリル・ギリシャ以外の文字です。</small>';
+  }else{
+    banner.className='ok';banner.textContent='✓ ラテン文字のみです。混在は見つかりませんでした。';
+  }
+  rows.forEach(([c,s,cp])=>{
+    const tr=document.createElement('tr');
+    const label=s?NAMES[s]:'その他';
+    let nm='';try{nm=c.normalize('NFKD')!==c?'互換文字':''}catch(e){}
+    tr.innerHTML=`<td class="${s?CLS[s]:'oth'}">${esc(c)}</td><td>${label}</td><td>${cp}</td><td>${nm||'-'}</td>`;
+    tbody.appendChild(tr);
+  });
+  table.hidden=!rows.length;
+}
+input.addEventListener('input',render);
+document.querySelectorAll('.samples button').forEach(b=>b.addEventListener('click',()=>{input.value=b.dataset.v;render();input.focus()}));
+</script>
+</body>
+</html>
